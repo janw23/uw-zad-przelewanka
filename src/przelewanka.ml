@@ -1,127 +1,144 @@
 open Array
 
-(* Moduł do szybkiego wyszukiwania ciągów liczb całkowitych w mapie *)
-module IntSequence = struct
-	type t = int array
-	let compare_index = ref 0
+exception FoundSolution of int
 
-	(* Porównuje elementy usprawniając wyszukiwanie imperatywnie *)
-	let compare a b =
-		print_int !compare_index;
-		print_string "\n";
-		assert (length a = length b);
-		let rec cmp a b =
-			match Stdlib.compare a.(!compare_index) b.(!compare_index) with
-			| 0 -> begin
-				if !compare_index = length a - 1 then 0
-				else (compare_index := !compare_index + 1; cmp a b) end
-			| c -> c
-		in cmp a b
+(* Tablica haszująca, w która mapuje stan napełnienia kubków *)
+(* do najmniejszej liczby operacji potrzebnych do uzyskania go *)
+let stateHolder = Hashtbl.create 10000(*100000000*)
+and states_to_add = ref [] (* Stany oczekujące na dodanie do stateHoldera 	 *)
+						   (* Nie mogą zostać dodane od razu po wygenerowaniu *)
+						   (* bo zepsułoby to działanie hashtbl 				 *)
 
-	(* Po znalezieniu elementu należy  *)
-	let compare_reload (x : unit) =
-		compare_index := 0
-end
+let capacity = ref [||]
+and target = ref [||]
+and state_size = ref 0
 
-(* Moduł przechowujący stany, gdzie kluczem jest tablica z ilością wody w wiaderkach *)
-module StateHolder = Map.Make(IntSequence);;
-
-(* Operacje na stateholderze, takie jak na mapie *)
-let stateFind key stateHolder = 
-	IntSequence.compare_reload ();
-	StateHolder.find key stateHolder
-
-let stateAdd key value stateHolder = 
-	IntSequence.compare_reload ();
-	StateHolder.add (copy key) value stateHolder
-
-let stateMem key stateHolder = 
-	IntSequence.compare_reload ();
-	StateHolder.mem key stateHolder
-
+(* Funkcje pomocnicze *)
 let max a b = if a > b then a else b
 and min a b = if a < b then a else b
 
 let first  (a, _) = a
 and second (_, b) = b
 
-(* Pojemność i docelowa ilość wody w szklankach i liczba szklanek *)
-let capacity = ref [||]
-and target = ref [||]
-and glassCount = ref 0
+(* ----Operacje, jakie można wykonać na kubkach---- *)
+(*let set_value (state : int list) value index =
+	let rec traverse lst k =
+		match lst with h :: t -> 
+			if k = 0 then value :: t
+			else h :: traverse t (k - 1) 
+	in traverse state index *)
 
-(* Operacje dostępne do wykonania na szklankach *)
-let op_fill state index =
-	set state index (!capacity).(index)
-
-let op_drain state index =
-	set state index 0
-
-let op_transfer state from too =
-	let avail = capacity.(too) - state.(too) in
-	set state too (min cap.(too) (state.(from) + state.(too)));
-	set state from (max 0 (state.(from) - avail))  
-
-(* Bada konkretny, wygenerowany stan *)
-let checkState stateHolder state cost isFinal =
-	if not stateMem state stateHolder then begin
-		if isFinal state then raise (FinalFound cost)
-		else stateAdd state (cost + 1) stateHolder
+let fill (state : int array) index =
+	let orig = state.(index) in begin
+		set state index !capacity.(index);
+		(fun x -> set state index orig)
 	end
 
-(* Generuje nowe stany do zbadania *)
-let generateStates stateHolder isFinal origin cost =
-	let newcost = cost + 1
-	and state = copy origin in begin
-		let prev_val = ref 0 in begin
-			(* Generuje stan, sprawdza go i przywraca początkową wartość *)
-			for i = 0 to glassCount - 1 do
-				prev_val := state.(i);
-				op_fill state i;
-				checkState stateHolder state newcost isFinal;
-				set state i !prev_val;
-			done;
+let drain (state : int array) index =
+	let orig = state.(index) in begin
+		set state index 0;
+		(fun x -> set state index orig)
+	end
 
-			for i = 0 to glassCount - 1 do
-				prev_val := state.(i);
-				op_drain state i;
-				checkState stateHolder state newcost isFinal;
-				set state i !prev_val;
-			done;
-		end;
-		let prev_val = ref (0, 0) in begin
-			for i = 0 to glassCount - 1 do
-				for j = 0 to glassCount - 1 do
-					if i <> j then begin
-						prev_val := (state.(i), state(j));
-						op_transfer state i j;
-						checkState stateHolder state newcost isFinal;
-						set state i (first !prev_val);
-						set state j (second !prev_val);
-					end
-				done
+let transfer (state : int array) from too =
+	let orig_from = state.(from)
+	and orig_too  = state.(too) in begin
+		let avail = !capacity.(too) - state.(too) in
+		set state too (min !capacity.(too) (state.(from) + state.(too)));
+		set state from (max 0 (state.(from) - avail));
+		(fun x -> set state from orig_from; set state too orig_too)
+	end
+
+let str_array arr = 
+	let acc = ref "[" in begin
+		for i = 0 to Array.length arr - 1 do
+			acc := !acc ^ (string_of_int arr.(i)) ^ "; ";
+		done;
+		!acc ^ "]"
+	end
+
+(* Sprawdza, czy nowy stan jest rozwiązaniem *)
+(* Jeśli nim nie jest, to sprawdza, czy wcześniej wystąpił *)
+(* Jeśli nie, to dodaje go na stos stanów do dodania po zakończeniu generowania *)
+let propose_state state cost =
+	if state = !target then raise (FoundSolution cost)
+	else if not (Hashtbl.mem stateHolder state) then
+		states_to_add := ((Array.copy state), cost) :: !states_to_add
+
+let generateStates state cost =
+	let newcost = cost + 1 in begin
+		for i = 0 to !state_size - 1 do
+			let revert = fill state i in
+				propose_state state newcost;
+				revert ();
+		done;
+		for i = 0 to !state_size - 1 do
+			let revert = drain state i in
+				propose_state state newcost;
+				revert ();
+		done;
+		for i = 0 to !state_size - 1 do
+			for j = 0 to !state_size - 1 do
+				if j <> i then begin
+					let revert = transfer state i j in
+					propose_state state newcost;
+					revert ();
+				end
 			done
-		end
+		done
 	end
 
-(* data - tablica par (początkowa, docelowa) ilość wody *)
-(* Rozwiązanie brute force							    *)
-let przelewanka (data : (int * int) array) =
-	glassCount := length data;
-	capacity := make !glassCount 0;
-	target := make !glassCount 0;
+let add_proposed_states x = 
+	let any_added = ref false in
+	let rec iterate lst =
+		match lst with
+		| [] -> ()
+		| (state, cost) :: t -> begin
+			if not (Hashtbl.mem stateHolder state) then 
+				(Hashtbl.add stateHolder state cost; any_added := true);
+			iterate t
+		end
+	in iterate !states_to_add;
+	states_to_add := [];
+	if not !any_added then raise (FoundSolution (-1))
 
-	for i = 0 to glassCount - 1 do
-		set !capacity i (first data.(i));
-		set !target i (second data.(i))
+let println str = 
+	print_string (str ^ "\n")
+
+let run_przelewanka data =
+	Hashtbl.reset stateHolder;
+
+	(* Inicjowanie potrzebnych struktur *)
+	state_size := length data;
+	capacity := make !state_size 0;
+	target := make !state_size 0;
+
+	for i = 0 to !state_size - 1 do
+		set !capacity i (first  data.(i));
+		set !target   i (second data.(i))
 	done;
 
-	let isFinal state = begin
-		let cmp x = 
-			for i = 0 to !glassCount - 1 do
-				if state.(i) <> (!target).(i) then raise Different
-			done;
-		in try (cmp (); true) with Different -> false
-	end in
-	
+	(* Dodawanie stanu początkowego *)
+	propose_state (make !state_size 0) 0;
 
+	while true do
+		Hashtbl.iter generateStates stateHolder;
+		add_proposed_states ();
+	done;;
+
+let przelewanka data =
+	try (run_przelewanka data; -1)
+	with FoundSolution c -> c;; 
+
+print_int (przelewanka [|(0, 1); (0, 2); (0, 3)|]);;
+
+
+(* capacity := [|1; 2; 3; 4; 5|];;
+
+let state = [|0; 2; 2; 1; 4|];;
+
+println (str_array state);;
+let revert = transfer state 2 0;;
+println (str_array state);;
+revert ();;
+println (str_array state);; *)

@@ -4,7 +4,7 @@ exception FoundSolution of int
 
 (* Tablica haszująca, w która mapuje stan napełnienia kubków *)
 (* do najmniejszej liczby operacji potrzebnych do uzyskania go *)
-let stateHolder = Hashtbl.create 10000(*100000000*)
+let stateHolder = Hashtbl.create 1000000(*100000000*)
 and states_to_add = ref [] (* Stany oczekujące na dodanie do stateHoldera 	 *)
 						   (* Nie mogą zostać dodane od razu po wygenerowaniu *)
 						   (* bo zepsułoby to działanie hashtbl 				 *)
@@ -31,13 +31,13 @@ and second (_, b) = b
 let fill (state : int array) index =
 	let orig = state.(index) in begin
 		set state index !capacity.(index);
-		(fun x -> set state index orig)
+		(fun _ -> set state index orig)
 	end
 
 let drain (state : int array) index =
 	let orig = state.(index) in begin
 		set state index 0;
-		(fun x -> set state index orig)
+		(fun _ -> set state index orig)
 	end
 
 let transfer (state : int array) from too =
@@ -46,16 +46,16 @@ let transfer (state : int array) from too =
 		let avail = !capacity.(too) - state.(too) in
 		set state too (min !capacity.(too) (state.(from) + state.(too)));
 		set state from (max 0 (state.(from) - avail));
-		(fun x -> set state from orig_from; set state too orig_too)
+		(fun _ -> set state from orig_from; set state too orig_too)
 	end
 
-let str_array arr = 
+(* (* let str_array arr =  *)
 	let acc = ref "[" in begin
 		for i = 0 to Array.length arr - 1 do
 			acc := !acc ^ (string_of_int arr.(i)) ^ "; ";
 		done;
 		!acc ^ "]"
-	end
+	end *)
 
 (* Sprawdza, czy nowy stan jest rozwiązaniem *)
 (* Jeśli nim nie jest, to sprawdza, czy wcześniej wystąpił *)
@@ -88,7 +88,8 @@ let generateStates state cost =
 		done
 	end
 
-let add_proposed_states x = 
+let add_proposed_states _ = 
+	(* print_string ("    stateHolder length = " ^ (string_of_int (Hashtbl.length stateHolder)) ^ "\n"); *)
 	let any_added = ref false in
 	let rec iterate lst =
 		match lst with
@@ -102,11 +103,18 @@ let add_proposed_states x =
 	states_to_add := [];
 	if not !any_added then raise (FoundSolution (-1))
 
-let println str = 
-	print_string (str ^ "\n")
+(* let println str =  *)
+	(* print_string (str ^ "\n") *)
+
+let test_counter = ref 0
 
 let run_przelewanka data =
+	print_string ("running on test #" ^ (string_of_int !test_counter) ^ "\n");
+	test_counter := !test_counter + 1;
+	flush_all ();
+	(* Resetowanie struktur przed ponownym uruchomieniem *)
 	Hashtbl.reset stateHolder;
+	states_to_add := [];
 
 	(* Inicjowanie potrzebnych struktur *)
 	state_size := length data;
@@ -130,7 +138,7 @@ let przelewanka data =
 	try (run_przelewanka data; -1)
 	with FoundSolution c -> c;; 
 
-print_int (przelewanka [|(0, 1); (0, 2); (0, 3)|]);;
+(* print_int (przelewanka [|(0, 1); (0, 2); (0, 3)|]);; *)
 
 
 (* capacity := [|1; 2; 3; 4; 5|];;

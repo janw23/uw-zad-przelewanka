@@ -1,3 +1,7 @@
+(* Zadanie Przelewanka 				*)
+(* Autor: Jan Wawszczak  			*)
+(* Code review: Szymon Frąckowiak 	*)
+
 open Array
 
 exception FoundSolution of int
@@ -73,24 +77,21 @@ let propose_state state cost =
 let generateStates state cost =
 	let newcost = cost + 1 in begin
 		for i = 0 to !state_size - 1 do
-			let revert = fill state i in
+			let revert = fill state i in begin
 				propose_state state newcost;
 				revert ();
-		done;
+			end;
 
-		for i = 0 to !state_size - 1 do
-			let revert = drain state i in
+			let revert = drain state i in begin
 				propose_state state newcost;
 				revert ();
-		done;
+			end;
 
-		for i = 0 to !state_size - 1 do
-			for j = 0 to !state_size - 1 do
-				if j <> i then begin
-					let revert = transfer state i j in
+			for j = 0 to !state_size - 1 do if j <> i then
+				let revert = transfer state i j in begin
 					propose_state state newcost;
 					revert ();
-				end
+				end;
 			done
 		done
 	end
@@ -156,3 +157,55 @@ let run_przelewanka data =
 let przelewanka data =
 	try (run_przelewanka data)
 	with FoundSolution c -> c
+;;
+
+(* Testy *)
+(*
+(*Nie ma rozwiązania*)
+let c = [|(10,2);(20,20);(10,0);(1000,1000)|];;
+assert ( przelewanka c = -1 );;
+let c = [|(3,2);(5,4);(5,2);(6,1)|];;
+assert (przelewanka c = -1);;
+let c = [|(40,1);(10,4);(23,2);(40,1)|];;
+assert (przelewanka c = -1);;
+let c = [|(12,2);(6,3);(4,4);(10,2)|];;
+assert (przelewanka c = -1);;
+let c = [|(14,3);(3,1)|];;
+assert (przelewanka c = -1);;
+
+(*Testy różne*)
+let c = [|(3,2);(3,3);(1,0);(12,1)|];;
+assert ( przelewanka c = 4 );;
+let c = [|(1,1);(100,99)|];;
+assert ( przelewanka c = 2 );;
+let c = [|(3,3);(5,4);(5,2);(6,1)|];;
+assert (przelewanka c = 6);;
+let c = [|(100,3);(2,1);(1,0);(6,1)|];;
+assert (przelewanka c = 7);;
+let c = [|(3,3);(5,5);(5,5);(6,6)|];;
+assert (przelewanka c = 4);;
+let c = [|(40,20);(20,10);(10,5);(5,0)|];;
+przelewanka c ;;
+let c = [|(19,3);(1,1);(2,2)|];;
+assert (przelewanka c = 6);;
+let c = [|(14,3);(3,1);(3,0)|];;
+assert (przelewanka c = 13);;
+let c = [|(3,3);(4,0);(1,1);(6,6)|];;
+assert (przelewanka c = 3);;
+let c = [|(46,20);(23,10);(13,5);(5,0)|];;
+assert (przelewanka c = 10);;
+let c = [|(18,3);(3,1);(2,2)|];;
+assert (przelewanka c = 4);;
+let c = [|(14,3);(5,1)|];;
+assert (przelewanka c = -1);;
+let c = [|(14,3);(5,1);(5,0)|];;
+assert (przelewanka c = 16);;
+
+(* Przelewanie ciągle z jednego do drugiego*)
+let c = [|(10000,5000);(1,0)|];;
+assert (przelewanka c = 10000);;
+let c = [|(50000,450);(3,1);(3,0)|];;
+assert (przelewanka c = 33635);;
+let c = [|(100000,25252);(2,2)|];;
+assert (przelewanka c = 25253);;
+*)
